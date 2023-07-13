@@ -1,0 +1,171 @@
+Mapper 1: Customer Mapper
+package org.apache.hadoop.mapreduce.join;
+
+//Importing the libraries that contain the classes and methods needed in the Mapper class//
+import java.io.IOException;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+
+//Creating a subclass CustomerMapperFile using the keyword extends //
+public class CustomerMapperfile extends Mapper<LongWritable, Text, Text, Text> 
+{
+	
+/*In order to handle the Objects in Hadoop way, Hadoop uses Text instead of java's String.
+The Text class in Hadoop is similar to a java String, however, Text implements interfaces 
+	like Comparable, Writable and WritableComparable.*/
+	
+// The map method takes three parameters//
+	 public void map(LongWritable key, Text value, Context context) throws IOException,InterruptedException 
+	{
+		String record = value.toString();  //create a variable record of a data type String
+		                                   //convert value into string and store it in record
+				
+		String[] parts = record.split("\t"); // splitting string record into an array of strings using the tab character ("\t") 
+		
+		context.write(new Text(parts[0]), new Text("CustomerData\t"+parts[1])); 
+// Emitting first part of the Customer file ie CustomerID (key)
+// string "CustomerData" is a (value) concatenated with the second element ie Customer Name separated by a tab character//
+		                     
+	}
+}
+
+
+Mapper 2: Transaction Mapper
+package org.apache.hadoop.mapreduce.join;
+
+//Importing the libraries that contain the classes and methods needed in the Mapper class//
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import java.io.IOException;
+import org.apache.hadoop.mapreduce.Mapper;
+
+//Creating a subclass CustomerMapperFile using the keyword extends //
+public class TransactionMapperfile extends Mapper<LongWritable, Text, Text, Text>
+{
+	// The map method takes three parameters
+	public void map(LongWritable key, Text value, Context context) throws IOException,InterruptedException
+	{
+		String record = value.toString() ; // create a variable record of a data type String
+                                          //convert value into string and store it in record
+		
+		String[] parts = record.split("\t"); // splitting string record into an array of strings using the tab character ("\t") 
+				
+		context.write(new Text(parts[2]), new Text("TransactionData\t"+parts[3]));
+// Emitting second part of the Transaction file ie CustomerID (key)   
+// string "TransactionData" is a (value) concatenated with the third element ie sales separated by a tab character//
+// Here sales refers to transaction amount associated with unique customer ID//
+		
+		}             
+}
+
+Reducer:
+package org.apache.hadoop.mapreduce.join;
+
+//Importing the libraries that contain the classes and methods needed in the Reducer class
+import org.apache.hadoop.io.Text;
+import java.io.IOException;
+import org.apache.hadoop.mapreduce.Reducer;
+
+/*Creating a subclass called ReducerFile from a parent
+class called Reducer using the keyword extends */
+public class ReducerFile extends
+      Reducer<Text, Text, Text, Text> {
+// the reduce method takes three parameters
+	public void reduce (Text key, Iterable<Text> values, Context context)
+	          throws IOException, InterruptedException {
+		String name = "";   // String variable named as name with empty string
+		double total = 0.0; // Double variable named as total with value of 0.0
+		int count = 0; // Integer variable named count with value of 0
+		
+		for (Text t : values) {  // Iterating through Text object ie values from 2 Mappers
+			
+			String parts[] = t.toString().split("\t");/*spliting each Text object into a String array
+			                                          using the tab character as the delimiter*/
+			
+//checks if the first element of the resulting array equals "TransactionData" or "CustomerData"
+/*If it is "TransactionData", the count is incremented by 1 and the 
+  second element of the array is parsed as a Float and added to the "total" variable */		
+			if (parts[0].equals("TransactionData")) {
+				count++;
+				total += Float.parseFloat(parts[1]);
+				
+//If it is "CustomerData", the second element of the array is assigned to the "name" variable				
+			} else if (parts[0].equals("CustomerData")) {
+				name = parts[1];
+				
+				
+	}/* Creating String variabled named "str" by formatting the "count" and "total" variables 
+using a format string "%d\t%f" */
+	}   String str = String.format("%d\t%f" , count , total );
+		context.write(new Text(name), new Text(str));//Emitting key-value pair 
+		}}
+
+Driver:
+package org.apache.hadoop.mapreduce.join;
+//Importing the libraries that contain the classes and methods needed in the driver class
+import java.io.IOException;
+import org.apache.hadoop.conf.Configuration ;
+import org.apache.hadoop.fs.Path ;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job ;
+import org.apache.hadoop.mapreduce.lib.input.MultipleInputs ;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat ;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat ;
+
+public class DriverFile {
+	public static void main(String[] args) throws IOException,ClassNotFoundException, InterruptedException {
+		/*creating the “conf” object from the “Configuration” class, which provides access to
+		 configuration parameters necessary for Hadoop job*/
+		 Configuration conf = new Configuration(); // creates a new instance of the Job class named "job"
+/*The Job.getInstance() method returns a new Job instance with the 
+specified Configuration object and a user-defined job name "Reduce-side join"*/		 
+		 Job job;Job.getInstance() ;
+		 job=Job.getInstance(conf, "Reduce-side join");
+		 
+		 
+		 job.setJarByClass(DriverFile.class);//specifying the driver class in the Jar file
+         job.setReducerClass(ReducerFile.class);//specifying the reducer class in the Jar file
+         job.setOutputKeyClass(Text.class);//setting the data type of the key output for the MapReduce job to Text
+		 job.setOutputValueClass(Text.class);//setting the data type of the value output for the MapReduce job to Text
+		 
+//Setting multiple input paths for the Hadoop MapReduce job using the MultipleInputs class.			
+			MultipleInputs.addInputPath(job, new
+					
+//adding the input path of the customer data file specified by the second argument ie Customer ID
+//Input format:TextInputFormat class and the Mapper function:CustomerMapperfile class 
+            Path(args[1]),TextInputFormat.class, CustomerMapperfile.class);
+			
+// adding the input path of the transaction data file specified by the third argument ie Customer ID
+//Input format: TextInputFormat class and the Mapper function: TransactionMapperfile class
+			MultipleInputs.addInputPath(job, new 
+			Path(args[2]), TextInputFormat.class, TransactionMapperfile.class);
+			Path outputPath = new Path(args[3]);/*output path is where the final output of 
+			                                      the MapReduce job will be stored*/
+			
+			//Setting the output path for Mapreduce Jobs results
+			FileOutputFormat.setOutputPath(job, outputPath);
+			// Delete the outputPath directory from the file system
+			outputPath.getFileSystem(conf).delete(outputPath);
+			 //check the status of the job (completed or not)
+			System.exit(job.waitForCompletion(true)? 0:1); 			
+           
+
+	
+		 
+}}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
